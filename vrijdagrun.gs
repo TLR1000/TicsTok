@@ -57,7 +57,7 @@ function createTicsFileForUser(user) {
   var headerRecord = createHeaderRecord(user);
   var timeRecords = createTimeRecords(user);
   var footerRecord = createFooterRecord(user);
-  var fileContent = headerRecord + timeRecords + "\n" + footerRecord;
+  var fileContent = headerRecord + timeRecords + footerRecord;
   var file = rootFolder.createFile(fileName, fileContent, "text/plain");
   return file;
 }
