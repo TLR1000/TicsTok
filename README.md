@@ -1,6 +1,7 @@
 # TicsTok
 automated tics mail sender
-Gebruikt een google account voor email, een google sheet en google script.
+
+Maakt gebruik van een google account voor email, een google sheet en google script.
 
 Bestaat uit 2 functionele delen:
 
