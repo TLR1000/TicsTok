@@ -1,6 +1,8 @@
 # TicsTok
 automated tics mail sender
 
+Temporary solution: copy all timerecords from latest known ticsfile and adjust them to fit this week.
+  
 Maakt gebruik van een google account voor email, een google sheet en google script.
 
 Bestaat uit 2 functionele delen:
