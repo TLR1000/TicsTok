@@ -5,31 +5,44 @@ Maakt en verstuurt de ticsfiles.
 
 function runFridayBatch() {
   //loop door users en kijk of file gesubmit moet worden
-  Logger.log('runFridayBatch');
-  var sheet = SpreadsheetApp.openById({sheet-id}).getSheetByName("users");
+  Logger.log('runFridayBatch started');
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var sheetId = scriptProperties.getProperty('sheetHandle');
+  var sheet = SpreadsheetApp.openById(sheetId).getSheetByName("users");
   var numRows = sheet.getLastRow();
   var todayDate = getTodayDate();
   for (var i = 2; i <= numRows; i++) {
     var user = sheet.getRange(i, 1).getValue();
     var email = sheet.getRange(i, 2).getValue();
-    Logger.log('user %s, email %s', user, email);
+    Logger.log('runFridayBatch: processing user %s, email %s', user.toFixed(0), email);
     var submissionDate = sheet.getRange(i, 3).getValue();
     if (submissionDate != todayDate) {
-      Logger.log('submissionDate != todayDate');
+      //Logger.log('runFridayBatch submissionDate != todayDate (not submitted yet so submitting)');
+      //Logger.log('submissionDate = %s, todayDate =%s', submissionDate, todayDate);
       submitTics(user, email);
     } else {
-      Logger.log('skip, already sent');
+      Logger.log('skip submission, already sent');
     }
+    Logger.log('runFridayBatch: done processing user %s, email %s', user.toFixed(0), email);
   }
+  Logger.log('runFridayBatch ended');
 }
 
 
 function submitTics(user, email) {
   //file maken, opsturen en bijhouden dat hij gestuurd is
-  Logger.log('submitTics for %s, %s', user, email);
-  var ticsFile = createTicsFileForUser(user);
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var recipient = scriptProperties.getProperty('ticsreceiveraddress');
+  Logger.log('submitTics started for user: %s, email: %s, recipient: %s', user.toFixed(0), email, recipient);
+  var ticsWorkFolder = DriveApp.getFoldersByName("ticstok_work").next();
+  var fileName = padNumber(user, 8) + '.W' + padNumber(getCurrentWeekNumber(), 2);
+  var headerRecord = createHeaderRecord(user);
+  var timeRecords = createTimeRecords(user);
+  var footerRecord = createFooterRecord(user);
+  var fileContent = headerRecord + timeRecords + footerRecord + "\n";
+  var ticsFile = ticsWorkFolder.createFile(fileName, fileContent, "text/plain");
   GmailApp.sendEmail(
-    "{tics-file-receiver-address}",
+    recipient,
     "Tics file submission",
     "Tics file submission",
     {
@@ -38,36 +51,38 @@ function submitTics(user, email) {
     }
   );
   //file sent, now update timestamp
-  var sheet = SpreadsheetApp.openById({sheet-id}).getSheetByName("users");
+  var scriptProperties = PropertiesService.getScriptProperties();
+  var sheetId = scriptProperties.getProperty('sheetHandle');
+  var sheet = SpreadsheetApp.openById(sheetId).getSheetByName("users");
   var numRows = sheet.getLastRow();
   for (var i = 2; i <= numRows; i++) {
     if (sheet.getRange(i, 2).getValue() == email) {
       sheet.getRange(i, 3).setValue(getTodayDate());
+      //Logger.log('submitTics: timestamp in sheet where email = %s, value set is %s', email, getTodayDate());
       break;
     }
   }
 }
 
-
 function createTicsFileForUser(user) {
   //ticsfile maken
-  Logger.log('createTicsFileForUser for %s', user);
-  var rootFolder = DriveApp.getRootFolder();
+  Logger.log('createTicsFileForUser started for %s', user.toFixed(0));
+  var folder = DriveApp.getFoldersByName("ticstok_work").next();
   var fileName = padNumber(user, 8) + '.W' + padNumber(getCurrentWeekNumber(), 2);
   var headerRecord = createHeaderRecord(user);
   var timeRecords = createTimeRecords(user);
   var footerRecord = createFooterRecord(user);
   var fileContent = headerRecord + timeRecords + footerRecord;
-  var file = rootFolder.createFile(fileName, fileContent, "text/plain");
+  var file = folder.createFile(fileName, fileContent, "text/plain");
   return file;
 }
-
 
 function createTimeRecords(user) {
   /*
   Temporary solution:
   copy all timerecords from latest known ticsfile and adjust them to fit this week.
   */
+  Logger.log("createTimeRecords started for user %s", user.toFixed(0))
   var tbSet = "";//set of tb recors to be written in output file as a formatted block of data
   //create array with latest known timerecords
   var tbRecords = getTBRecords(user);
@@ -88,16 +103,17 @@ function createTimeRecords(user) {
 }
 
 function getTBRecords(user) {
+  Logger.log("getTBRecords for user %s", user.toFixed(0))
   var newestFile = null;
   var highestNumber = null;
-  var query = "title contains '" + padNumber(user, 8) + ".W'";
-  var files = DriveApp.searchFiles(query);
+  var folder = DriveApp.getFoldersByName("ticstok_received").next();
+  var query = "title contains '" + padNumber(user, 8) + ".W' and '" + folder.getId() + "' in parents";
+  var files = folder.searchFiles(query);
   while (files.hasNext()) {
     var file = files.next();
-    Logger.log('file ' + file.getName());
+    //Logger.log('getTBRecords: file ' + file.getName());
     var fileNameParts = file.getName().split(".");
     if (fileNameParts.length !== 2 || fileNameParts[1].length !== 3) {
-      Logger.log('invalid name');
       continue; // Skip files with invalid names
     }
     var fileNumber = parseInt(fileNameParts[1].substr(1), 10);
@@ -105,12 +121,14 @@ function getTBRecords(user) {
       continue; // Skip files with invalid numbers
     }
     if (highestNumber === null || fileNumber > highestNumber) {
+      //Logger.log('getTBRecords: (highestNumber === null || fileNumber > highestNumber) fileNumber = %s, highestNumber = %s', fileNumber, highestNumber);
       newestFile = file;
       highestNumber = fileNumber;
+      //Logger.log('getTBRecords: newestFile = %s, highestNumber = %s', newestFile, highestNumber);
     }
   }
-  Logger.log('no more files');
   if (newestFile) {
+    Logger.log('getTBRecords: newest file used: ' + newestFile.getName());
     var content = newestFile.getBlob().getDataAsString();
     var lines = content.split("\n");
     var tbRecords = [];
@@ -125,10 +143,8 @@ function getTBRecords(user) {
   return "";
 }
 
-
-
-
 function createHeaderRecord(user) {
+  Logger.log("createHeaderRecord for user %s", user.toFixed(0))
   //get the base record
   var record = readNewestTicsFileHeaderForUser(user);
   //Logger.log("record: " + record);
@@ -142,6 +158,7 @@ function createHeaderRecord(user) {
 }
 
 function createFooterRecord(user) {
+  Logger.log("createFooterRecord for user %s", user.toFixed(0))
   //get the base record
   var record = readNewestTicsFileFooterForUser(user);
   //Logger.log("record: " + record);
@@ -155,31 +172,34 @@ function createFooterRecord(user) {
   return record;
 }
 
-
 function readNewestTicsFileHeaderForUser(user) {
+  Logger.log("readNewestTicsFileHeaderForUser for user %s", user.toFixed(0))
   var newestFile = null;
   var highestNumber = null;
+  var ticstokReceivedFolder = DriveApp.getFoldersByName("ticstok_received").next();
   var query = "title contains '" + padNumber(user, 8) + ".W'";
-  var files = DriveApp.searchFiles(query);
+  var files = ticstokReceivedFolder.searchFiles(query);
   while (files.hasNext()) {
     var file = files.next();
-    //Logger.log('file ' + file.getName());
+    //Logger.log('readNewestTicsFileHeaderForUser: file found ' + file.getName());
     var fileNameParts = file.getName().split(".");
     if (fileNameParts.length !== 2 || fileNameParts[1].length !== 3) {
       continue; // Skip files with invalid names
     }
     var fileNumber = parseInt(fileNameParts[1].substr(1), 10);
+    //Logger.log('readNewestTicsFileHeaderForUser: fileNumber:%s found, highestNumber is %s', fileNumber, highestNumber);
     if (isNaN(fileNumber)) {
       continue; // Skip files with invalid numbers
     }
     if (highestNumber === null || fileNumber > highestNumber) {
+      //Logger.log('readNewestTicsFileHeaderForUser: (highestNumber === null || fileNumber > highestNumber) fileNumber = %s, highestNumber = %s', fileNumber, highestNumber);
       newestFile = file;
       highestNumber = fileNumber;
+      //Logger.log('readNewestTicsFileHeaderForUser: newestFile = %s, highestNumber = %s', newestFile, highestNumber);
     }
   }
-  //Logger.log('no more files');
-  if (newestFile) {
-    //Logger.log('newest file: '+newestFile.getName());
+  if (newestFile) {// if found
+    Logger.log('readNewestTicsFileHeaderForUser: newestFile used: %s', newestFile.getName());
     var content = newestFile.getBlob().getDataAsString();
     var firstLine = content.split("\n")[0];
     return firstLine;
@@ -187,17 +207,20 @@ function readNewestTicsFileHeaderForUser(user) {
   return "";
 }
 
+
 function readNewestTicsFileFooterForUser(user) {
+  Logger.log("readNewestTicsFileFooterForUser for user %s", user.toFixed(0))
   var newestFile = null;
   var highestNumber = null;
   var query = "title contains '" + padNumber(user, 8) + ".W'";
-  var files = DriveApp.searchFiles(query);
+  var folder = DriveApp.getFoldersByName("ticstok_received").next();
+  var files = folder.searchFiles(query);
   while (files.hasNext()) {
     var file = files.next();
-    Logger.log('file ' + file.getName());
+    //Logger.log('readNewestTicsFileFooterForUser: file found ' + file.getName());
     var fileNameParts = file.getName().split(".");
     if (fileNameParts.length !== 2 || fileNameParts[1].length !== 3) {
-      Logger.log('invalid name');
+      //Logger.log('readNewestTicsFileFooterForUser: invalid name');
       continue; // Skip files with invalid names
     }
     var fileNumber = parseInt(fileNameParts[1].substr(1), 10);
@@ -207,12 +230,11 @@ function readNewestTicsFileFooterForUser(user) {
     if (highestNumber === null || fileNumber > highestNumber) {
       newestFile = file;
       highestNumber = fileNumber;
+      //Logger.log('readNewestTicsFileFooterForUser: newestFile = %s, highestNumber = %s', newestFile, highestNumber);
     }
   }
-  Logger.log('no more files');
   if (newestFile) {
-    Logger.log('newest file: ' + newestFile.getName());
-    Logger.log('newest file');
+    Logger.log('readNewestTicsFileFooterForUser: newest file used: ' + newestFile.getName());
     var content = newestFile.getBlob().getDataAsString();
     var lines = content.split("\n");
     var lastLine = lines[lines.length - 2];
@@ -220,7 +242,6 @@ function readNewestTicsFileFooterForUser(user) {
   }
   return "";
 }
-
 
 
 
