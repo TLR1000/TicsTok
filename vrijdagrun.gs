@@ -237,8 +237,16 @@ function readNewestTicsFileFooterForUser(user) {
     Logger.log('readNewestTicsFileFooterForUser: newest file used: ' + newestFile.getName());
     var content = newestFile.getBlob().getDataAsString();
     var lines = content.split("\n");
-    var lastLine = lines[lines.length - 2];
+    var lastLine = null;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith('EK')) {
+        lastLine = lines[i];
+        break;
+      }
+    }
     return lastLine;
+  } else {
+    Logger.log("Error: No newest file found");
   }
   return "";
 }
