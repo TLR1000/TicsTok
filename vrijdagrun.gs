@@ -36,6 +36,13 @@ function submitTics(user, email) {
   Logger.log('submitTics started for user: %s, email: %s, recipient: %s', user.toFixed(0), email, recipient);
   var ticsWorkFolder = DriveApp.getFoldersByName("ticstok_work").next();
   var fileName = padNumber(user, 8) + '.W' + padNumber(getCurrentWeekNumber(), 2);
+  // Check if file with same name already exists and delete it
+  var existingFile = ticsWorkFolder.getFilesByName(fileName);
+  if (existingFile.hasNext()) {
+    var fileToRemove = existingFile.next();
+    ticsWorkFolder.removeFile(fileToRemove);
+  }
+  //create file
   var headerRecord = createHeaderRecord(user);
   var timeRecords = createTimeRecords(user);
   var footerRecord = createFooterRecord(user);
