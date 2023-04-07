@@ -6,11 +6,13 @@ Slaat de attachments op en voegt gebruiker toe aan sheet, users.
 
 function processUnreadEmails() {
   var threads = GmailApp.search("is:unread");
+  Logger.log ("Processing %s unread mails",threads.length.toFixed(0));
   for (var i = 0; i < threads.length; i++) {
     var messages = threads[i].getMessages();
     for (var j = 0; j < messages.length; j++) {
       var message = messages[j];
       if (message.isUnread()) {
+        Logger.log ("Processing: "+ message.getSubject());
         processEmail(message);
         message.markRead();
       }
@@ -23,6 +25,18 @@ function processEmail(message) {
   var body = message.getPlainBody();
   if (body.toLowerCase().indexOf('stop tics') !== -1) {
     processUnsubscriber(message);
+    return;
+  }
+
+  // Check if message contains 'f126' and call reportBiweeklyF126Totals
+  if (body.toLowerCase().indexOf('f126') !== -1 || message.getSubject().toLowerCase().indexOf('f126') !== -1) {
+    reportBiweeklyF126Totals(message);
+    return;
+  }
+
+  // Check if we have an error report for our submission
+  if (message.getSubject().indexOf("Automatically reply from TICS") !== -1) {
+    emptySubmissionHandler(message);
     return;
   }
 
