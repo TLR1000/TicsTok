@@ -1,4 +1,13 @@
 function emptySubmissionHandler(message) {
+  // only run for empty submission files.
+  if (body.indexOf("Ihre Mail an 'TiCS' besitzt keine Abschlussdatei.") === -1) {
+    return; 
+  }
+  // only run on Fridays
+  var today = new Date();
+  if (today.getDay() !== 5) {
+    return;
+  }
   //probeer uit te vogelen voor wie dit is
   var body = message.getBody().toLowerCase();
   var lines = body.split("\n");
