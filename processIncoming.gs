@@ -6,13 +6,13 @@ Slaat de attachments op en voegt gebruiker toe aan sheet, users.
 
 function processUnreadEmails() {
   var threads = GmailApp.search("is:unread");
-  Logger.log ("Processing %s unread mails",threads.length.toFixed(0));
+  Logger.log("Processing %s unread mails", threads.length.toFixed(0));
   for (var i = 0; i < threads.length; i++) {
     var messages = threads[i].getMessages();
     for (var j = 0; j < messages.length; j++) {
       var message = messages[j];
       if (message.isUnread()) {
-        Logger.log ("Processing: "+ message.getSubject());
+        Logger.log("processUnreadEmails: index:" + j);
         processEmail(message);
         message.markRead();
       }
@@ -21,21 +21,29 @@ function processUnreadEmails() {
 }
 
 function processEmail(message) {
+  var recognized = false;
+
   // Check if message contains 'stop tics' and call processUnsubscriber
   var body = message.getPlainBody();
-  if (body.toLowerCase().indexOf('stop tics') !== -1) {
+  if (body.toLowerCase().indexOf('stop tics') !== -1 || message.getSubject().toLowerCase().indexOf('stop tics') !== -1) {
+    recognized = true;
+    Logger.log("recognized: stop tics");
     processUnsubscriber(message);
     return;
   }
 
   // Check if message contains 'f126' and call reportBiweeklyF126Totals
   if (body.toLowerCase().indexOf('f126') !== -1 || message.getSubject().toLowerCase().indexOf('f126') !== -1) {
+    recognized = true;
+    Logger.log("recognized: f126");
     reportBiweeklyF126Totals(message);
     return;
   }
 
   // Check if we have an error report for our submission
   if (message.getSubject().indexOf("Automatically reply from TICS") !== -1) {
+    recognized = true;
+    Logger.log("recognized: Automatically reply from TICS");
     emptySubmissionHandler(message);
     return;
   }
@@ -44,10 +52,18 @@ function processEmail(message) {
   for (var i = 0; i < attachments.length; i++) {
     var attachment = attachments[i];
     if (attachment.getName().match(/\.W\d{2}$/i)) {
+      Logger.log("recognized: tics file attached");
+      recognized = true;
       processSubscriber(message, attachment);
       return;
     }
   }
+
+  if (recognized !== true) {
+    Logger.log("Not recognized.");
+    processUnrecognized(message);
+  }
+
   message.markUnread();
 }
 
@@ -70,7 +86,9 @@ function processUnsubscriber(message) {
   }
 
   // Send confirmation email
-  var body = "You have terminated the TicsTok tics submission service.\nTo start using it again, simply send an email with a ticsfile attached to abigfatsmiley@gmail.com.";
+  var body = "You have terminated the TicsTok tics submission service.\n"
+  body += "All your data was erased. You have ceased to exist in this system.\n\n"
+  body += "To start using it again, simply send an email with a ticsfile attached to abigfatsmiley@gmail.com.";
   MailApp.sendEmail(sender, "TicsTok service termination confirmation", body);
 }
 
@@ -91,7 +109,6 @@ function deleteTicsFilesForUser(user) {
   }
 }
 
-
 function processSubscriber(message, attachment) {
   var fileId = saveAttachmentToDrive(attachment, "ticstok_received");
   var sender = message.getFrom();
@@ -110,7 +127,7 @@ function processSubscriber(message, attachment) {
     if (sheet.getRange(i, emailColumn).getValue().toLowerCase() == email) {
       name = sheet.getRange(i, nameColumn).getValue();
       emailFound = true;
-      replyMessage = 'Thanks for the update.\n';
+      replyMessage = 'Thanks for the update.\n\n';
       break;
     } else {
       replyMessage = 'Welcome to the TicsTok tics submission service.\nNever miss the deadline!\n\n';
@@ -120,7 +137,9 @@ function processSubscriber(message, attachment) {
     sheet.appendRow([name, email]);
   }
   message.markRead();
-  replyMessage += "\nI will schedule a tics submission for you every fridayafternoon from now on, based on the tics file(s) you have sent me.\nTo stop using this service, simply reply or send an email containing 'stop tics' in the message body to abigfatsmiley@gmail.com.\nTo update your existing time allocation preferences, simply send a newer ticsfile to the same address.";
+  replyMessage += "I will submit a valid ticsfile you every fridayafternoon from now on, based on the tics file(s) you have sent me.\n\n"
+  replyMessage += "To stop this service, reply or send an email containing 'stop tics' in the body or subject to abigfatsmiley@gmail.com.\n"
+  replyMessage += "To update your existing time allocation preferences, simply send a newer ticsfile to the same address.";
   GmailApp.sendEmail(email, "Tics Submission Scheduled", replyMessage);
 }
 
@@ -145,3 +164,15 @@ function addToTicsTokSheet(sender, fileName) {
   var row = [String(fileName), extractEmail(sender)];
   sheet.appendRow(row);
 }
+
+function processUnrecognized(message) {
+  //unrecognized, forwarden dan maar
+  Logger.log("Unrecognized email");
+  var adminEmailAddress = PropertiesService.getScriptProperties().getProperty('adminEmailAddress');
+  Logger.log("adminEmailAddress: " + adminEmailAddress);
+  var forwardedMessage = message.forward(adminEmailAddress, {subject: "Fwd: " + message.getSubject()});
+  Logger.log("sending...");
+  GmailApp.sendEmail(adminEmailAddress, forwardedMessage.getSubject(), forwardedMessage.getBody());
+}
+
+
